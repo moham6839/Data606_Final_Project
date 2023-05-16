@@ -1,0 +1,407 @@
+---
+title: "Data 606 Final Project"
+author: "Mohamed Hassan-El Serafi"
+date: "2023-05-16"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+# Abstract
+
+This analysis examines factors that influence an NBA basketball player's WinShare totals. Using specific explanatory variables within the dataset, I explore the linear relationship between WinShares and each selected variable using a multiple linear regression model. Each observation in the dataset are players who were drafted between 1989 and 2021. Independent variables used include career player stats of points, rebounds, assists, field goal percentage, minutes played, plus/minus, and overall draft selection. For purposes of this analysis, players containing missing data were removed. 
+
+Because of its skewed distribution, WinShares was log-transformed and created as a separate target variable. ggpairs() was used to check for multicollinearity between each of the chosen independent variables. Field goal percentage, plus/minus, and overall draft pick selection did not show high correlation with other variables, and were used in the multiple linear regression model. The initial regression model using the original WinShare variable produced an Adjusted R-square of 32.63%. Although there were outliers, most of the data points in the Residual vs Fitted Values plot were clustered around the zero line threshold with no distinct pattern. The near normal residuals histogram showed skewness to the right with its center at approximately zero. The QQ-plot displayed a relatively straight line, with its upper end positively skewed. This indicates that the conditions of linearity, near normal residuals, and constant variability are met. When replacing the target variable with its log-transformed counterpart, the model increased its Adjusted R-Square performance to 46.56%. The Residual vs Fitted Values displayed a cluster of data points around the zero threshold but had less outliers. The near normal residuals histogram showed a symmetrical normal distribution with its center at approximately zero. The line of data points in the QQ-plot was more straight with no discernible skewness. The revised model improved the model's overall performance.
+
+
+
+# Introduction
+
+The National Basketball Association has seen a huge surge in the use of data analytics over the past 15 years. The purpose of aggregating data is to assist in making basketball decisions that will help identify players that can lead to wins and possibly a championship. Using NBA player data obtained from Kaggle, I will explore various variables to ascertain what influences a player's WinShare. Independent variables utilized include plus/minus, points, total rebounds, assists, minutes played, overall draft pick selection, and field goal percentage. 
+
+
+
+### Part 2 - Data
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(DT)
+library(GGally)
+library(vtable)
+```
+
+
+
+```{r echo=FALSE}
+# load data
+df <- read.csv("https://raw.githubusercontent.com/moham6839/Data606_Final_Project/main/nbaplayersdraft.csv")
+```
+
+```{r}
+glimpse(df)
+```
+
+The dataset has 1,922 observations and 24 columns/variables. Each row represents a player who was drafted in the first or second round between 1989 and 2021. Players who did not play in the NBA have missing values. For purposes of this project, I will drop those players with missing data from the dataset. The target variable is WinShares, defined as adding together Offensive Win Shares and Defensive Win Shares. This article from Basketball Reference describes how Offensive and Defensive Win Shares are respectively calculated. The independent variables used are:
+
+**overall_pick**: Overall draft selection of each player (categorical variable)
+**points**: Total career points
+**total_rebounds**: Total career rebounds
+**assists**: Total career assists
+**field_goal_percentage**: Career field goal percentage
+**minutes_played**: Total career minutes played
+**box_plus_minus**: Measure of a player's productivity on the court. Positive numbers indicate that the player helped increase their respective team's lead or decrease the deficit. A minus indicates that the deficit increased or the team's lead decreased.
+
+
+
+
+
+
+### Part 3 - Exploratory Data Analysis
+
+```{r}
+# summary statistics
+st(df)
+```
+
+
+
+
+Along with the dependent variable `win_shares`, I will choose 7 independent variables to build a multiple linear regression model:
+
+
+
+```{r}
+new_df <- df %>%
+  select(overall_pick, win_shares, minutes_played, points, total_rebounds, assists, box_plus_minus, field_goal_percentage)
+DT::datatable(head(new_df))
+```
+
+
+```{r}
+# summary statistics of dependent and independent variables
+st(new_df)
+```
+
+
+Players that were drafted that do not have data are removed from the dataset:
+
+
+```{r}
+new_df <- new_df %>%
+  drop_na()
+```
+
+```{r}
+sum(is.na(new_df))
+```
+
+
+
+
+Checking the correlation coefficients between `win_shares` and independent variables using ggpairs(). It appears that `box_plus_minus`, `field_goal_percentage`, and `overall_pick` are the only variables that don't have correlation coefficients with other variables:
+
+
+```{r}
+p <- ggpairs(new_df[,c(1:8)], lower = list(continuous = wrap("smooth", se=FALSE, alpha = 0.7, size=0.5)))
+p[5,3] <- p[5,3] + theme(panel.border = element_rect(color = 'blue', fill = NA, size = 2))
+p[3,5] <- p[3,5] + theme(panel.border = element_rect(color = 'blue', fill = NA, size = 2))
+p
+```
+
+Based on these results, we will only keep `box_plus_minus`, `overall_pick`, and `field_goal_percentage`, since the other variables had multicollinearity greater than 0.80.  
+
+
+
+Below is a histogram showing the distribution of `win_shares`. It appears that the distribution is skewed to the left:
+
+
+
+```{r}
+new_df %>% 
+  ggplot(aes(x=win_shares)) +
+  geom_histogram(bins = 50) +
+  labs(title="Amount of WinShares for Each Player",
+       x="Number of WinShares",
+       y="Count")
+```
+
+
+
+To normalize the `win_shares` data, I log-transformed the variable using `log1p`. This log-transformed target variable will be used in a separate multiple linear regression model with the dependent variables. The histogram appears to show more of a normalized `win_shares` variable:
+
+
+
+```{r}
+# log transformation, log winshares +1
+new_df$log_win_shares <- log1p(new_df$win_shares)
+```
+
+
+
+
+
+```{r}
+new_df %>% 
+  ggplot(aes(x=log_win_shares)) +
+  geom_histogram(bins = 15) +
+  labs(title="Amount of Log WinShares for Each Player",
+       x="Log WinShares",
+       y="Count")
+```
+
+
+
+I wanted to get a snapshot of the distribution of data for each independent variable. `box_plus_minus`, `field_goal_percentage`, and `overall_pick` appears to show a normal distribution, while the other independent variables show a skew distribution to the left:
+
+
+
+### Box Plus/Minus
+
+```{r}
+new_df %>%
+  ggplot(aes(box_plus_minus)) +
+  geom_histogram(bins = 50) +
+  labs(title="Plus/Minus for Each Player",
+       x="Plus/Minus",
+       y="Count")
+```
+
+
+
+
+### Field Goal Percentage
+
+
+```{r}
+new_df %>%
+  ggplot(aes(field_goal_percentage)) +
+  geom_histogram(bins = 50) +
+  labs(title="Career Field Goal Percentage for Each Player",
+       x="Field Goal %",
+       y="Count")
+```
+
+
+
+
+### Overall Draft Pick Selection
+
+
+```{r}
+new_df %>%
+  ggplot(aes(overall_pick)) +
+  geom_histogram(bins = 10) +
+  labs(title="Overall Draft Pick for Each Player",
+       x="Draft Pick Selection",
+       y="Count")
+```
+
+
+
+
+
+### WinShares and Box Plus/Minus
+
+```{r}
+new_df %>%
+  ggplot(aes(box_plus_minus, win_shares, na.rm=TRUE)) +
+  geom_point() +
+  labs(title="Amount of WinShares Based on Career Plus/Minus of Each Player",
+       x="Plus/Minus",
+       y="WinShares")
+```
+
+
+
+### WinShares and Overall Draft Pick Selection
+
+
+
+```{r}
+new_df %>%
+  ggplot(aes(overall_pick, win_shares, na.rm=TRUE)) +
+  geom_point() +
+  labs(title="Amount of WinShares Based on Overall Pick of Players",
+       x="Overall Draft Picks",
+       y="WinShares")
+```
+
+
+
+### WinShares and Field Goal Percentage
+
+
+```{r}
+new_df %>%
+  ggplot(aes(field_goal_percentage, win_shares)) +
+  geom_point() +
+  labs(title="Amount of WinShares Based on Field Goal Percentage",
+       x="Field Goal Percentage",
+       y="WinShares")
+```
+
+
+
+
+
+
+
+## Part 4 - Inference
+
+Using the original `win_shares` variable, I created a multiple linear regression model:
+
+
+
+```{r}
+m_initial <- lm(win_shares ~ box_plus_minus + field_goal_percentage 
+                + overall_pick, data = new_df)
+summary(m_initial)
+```
+
+
+
+
+
+The initial results show that the model has an Adjusted R-square of 32.63%. All 3 variables have p-values less than 0.05, and therefore show statistical significance with `win_shares`.
+
+
+
+The following are residual plots to capture the linearity, near normal residuals, and constant variability of the model:
+
+
+### Residual vs Fitted Values Plot
+
+
+```{r}
+ggplot(m_initial, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title="Residual vs. Fitted Values Plot") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+
+
+### Near Normal Residuals Histogram
+
+
+```{r}
+ggplot(data = m_initial, aes(x = .resid)) +
+  geom_histogram(binwidth = 1.5) +
+  xlab("Residuals")
+```
+
+
+
+### QQ Plot
+
+
+```{r}
+ggplot(data = m_initial, aes(sample = .resid)) +
+  stat_qq()
+```
+
+
+```{r}
+qqnorm(m_initial$residuals)
+qqline(m_initial$residuals)
+```
+
+
+
+
+The residual vs.fitted plot shows data points clustered around the zero threshold with noticeable positive and negative outliers. The histogram shows a skewness to the right, with its center approximately at zero and a narrow distribution. The qq plot appears to show most of the data points along the line, with its upper end positively skewed. This may indicate that there are more extreme values than would be expected in a normal distribution. Overall, I think this model meets the conditions of least squares in linearity, near normal residuals, and constant variability. 
+
+
+
+I will replace the `win_shares` variable with the log-transformed `win_shares` variable see if there are any differences with the initial model: 
+
+
+
+
+```{r}
+m_revised <- lm(log_win_shares ~ box_plus_minus + overall_pick 
+                + field_goal_percentage, data = new_df)
+summary(m_revised)
+```
+
+Using the log-transformed target variable, the Adjusted R-Square increased to 46.56%. However, `field_goal_percentage` has a p-value greater than 0.05. I removed the variable and re-ran the model: 
+
+
+```{r}
+m_revised2 <- lm(log_win_shares ~ box_plus_minus + overall_pick, data = new_df)
+summary(m_revised2)
+```
+
+The new revised model without `field_goal_percentage` decreased the Adjusted R-Square slightly to 46.54%.
+
+
+
+
+### Residual vs Fitted Values
+
+```{r}
+ggplot(m_revised2, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title="Residual vs. Fitted Values Plot") +
+  xlab("Fitted values") +
+  ylab("Residuals")
+```
+
+
+
+### Near Normal Residuals Histogram
+
+
+```{r}
+ggplot(data = m_revised, aes(x = .resid)) +
+  geom_histogram(binwidth = 1.5) +
+  xlab("Residuals")
+```
+
+
+### QQ Plot
+
+
+```{r}
+ggplot(data = m_revised, aes(sample = .resid)) +
+  stat_qq()
+```
+
+
+
+
+```{r}
+qqnorm(m_revised2$residuals)
+qqline(m_revised2$residuals)
+```
+
+
+
+
+
+
+### Part 5 - Conclusion
+
+
+When assessing each model, it appears that the revised model is a better fit for the data than the initial model. The Adjusted R-Square improved, from 32.63% to 46.54%. This means 46.54% of the variance in WinShares can be explained by where players are selected and there plus/minus values. The Residual vs Fitted Values plot contained less outliers and was more clustered around the zero threshold. There was more symmetrical shape and wider spread in the Near Normal Residuals plot, with its center approximately at zero. The line of data points in the revised QQ-plot was straight and did not have a discernible skewness. This model does a better job of meeting the conditions of least squares in linearity, near normal residuals, and constant variability. Possible next steps to improve the model are identifying and removing additional outliers, and log-transforming the independent variables. 
+
+
+
+### References
+
+https://www.kaggle.com/datasets/mattop/nba-draft-basketball-player-data-19892021
+
+https://www.basketball-reference.com/about/ws.html
+
+
+
+
