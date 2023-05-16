@@ -34,6 +34,7 @@ library(tidyverse)
 library(DT)
 library(GGally)
 library(vtable)
+library(visreg)
 ```
 
 
@@ -384,6 +385,13 @@ qqnorm(m_revised2$residuals)
 qqline(m_revised2$residuals)
 ```
 
+
+Below are visualizations showing each independent variable's linear relationship with the dependent variable:
+
+
+```{r}
+visreg(m_revised2)
+```
 
 
 
